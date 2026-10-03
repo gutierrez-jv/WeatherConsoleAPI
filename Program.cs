@@ -49,6 +49,9 @@ internal class Program
         services.AddScoped<
             IWeatherService,
             WeatherService>();
+        services.AddScoped<
+            IWeatherFormatter,
+            ConsoleWeatherFormatter>();
 
         services.AddScoped<
             ConsoleMenu>();

@@ -6,12 +6,17 @@ namespace WeatherConsoleClient.Presentation;
 public class ConsoleMenu
 {
     private readonly IWeatherService _weatherService;
+    private readonly IWeatherFormatter _weatherFormatter;
 
     public ConsoleMenu(
-        IWeatherService weatherService)
+    IWeatherService weatherService,
+    IWeatherFormatter weatherFormatter)
     {
         _weatherService = weatherService;
+        _weatherFormatter = weatherFormatter;
     }
+
+    private bool _useFahrenheit;
 
     public async Task RunAsync(
         CancellationToken cancellationToken)
@@ -37,6 +42,10 @@ public class ConsoleMenu
                 case "3":
                     await ShowDashboardAsync(
                         cancellationToken);
+                    break;
+                
+                case "4":
+                    SelectTemperatureUnit();
                     break;
 
                 case "0":
@@ -82,6 +91,9 @@ public class ConsoleMenu
             "3. Weather Dashboard");
 
         Console.WriteLine(
+            "4. Select Temperature Unit");
+
+        Console.WriteLine(
             "0. Exit");
 
         Console.WriteLine();
@@ -124,39 +136,11 @@ public class ConsoleMenu
         Console.WriteLine();
 
         Console.WriteLine(
-            "========================================");
+            _weatherFormatter.FormatCurrentWeather(
+                weather,
+                _useFahrenheit));
 
-        Console.WriteLine(
-            "CURRENT WEATHER");
-
-        Console.WriteLine(
-            "========================================");
-
-        Console.WriteLine();
-
-        Console.WriteLine(
-            $"City        : {weather.Name}");
-
-        Console.WriteLine(
-            $"Temperature : {weather.Main.Temperature:F2} °C");
-
-        Console.WriteLine(
-            $"Feels Like  : {weather.Main.FeelsLike:F2} °C");
-
-        Console.WriteLine(
-            $"Humidity    : {weather.Main.Humidity} %");
-
-        Console.WriteLine(
-            $"Pressure    : {weather.Main.Pressure} hPa");
-
-        if (weather.Weather.Count > 0)
-        {
-            Console.WriteLine(
-                $"Condition   : {weather.Weather[0].Description}");
-        }
-
-        Console.WriteLine(
-            $"Wind Speed  : {weather.Wind.Speed:F2} m/s");
+        DisplayHotWeatherAlert(weather);
     }
 
     private async Task ShowForecastAsync(
@@ -208,7 +192,17 @@ public class ConsoleMenu
 
         Console.WriteLine();
 
-        foreach (var item in forecast.Items)
+        var itemsToDisplay = SelectForecastItems(forecast.Items);
+
+        if (itemsToDisplay.Count == 0)
+        {
+            Console.WriteLine("No forecast entries found for that selection.");
+            return;
+        }
+
+        DisplayRainAlert(itemsToDisplay);
+
+        foreach (var item in itemsToDisplay)
         {
             var condition =
                 item.Weather.Count > 0
@@ -220,10 +214,11 @@ public class ConsoleMenu
 
             Console.WriteLine(
                 $"{item.DateTimeText,-20}" +
-                $"{item.Main.Temperature,7:F1} °C   " +
+                $"{FormatTemperature(item.Main.Temperature),10}   " +
                 $"{condition,-18}" +
                 $"{precipitation,5:F0}%");
         }
+        DisplayForecastSummary(itemsToDisplay);
     }
 
     private async Task ShowDashboardAsync(
@@ -277,7 +272,7 @@ public class ConsoleMenu
             forecast);
     }
 
-    private static void DisplayDashboard(
+    private void DisplayDashboard(
     CurrentWeatherDto currentWeather,
     ForecastDto forecast)
     {
@@ -304,14 +299,16 @@ public class ConsoleMenu
 
         Console.WriteLine(
             "----------------------------------------");
+        
+        DisplayHotWeatherAlert(currentWeather);
 
         Console.WriteLine(
             $"Temperature : " +
-            $"{currentWeather.Main.Temperature:F1} °C");
+            $"{FormatTemperature(currentWeather.Main.Temperature)}");
 
         Console.WriteLine(
             $"Feels Like  : " +
-            $"{currentWeather.Main.FeelsLike:F1} °C");
+            $"{FormatTemperature(currentWeather.Main.FeelsLike)}");
 
         Console.WriteLine(
             $"Humidity    : " +
@@ -332,6 +329,8 @@ public class ConsoleMenu
         Console.WriteLine(
             "----------------------------------------");
 
+        DisplayRainAlert(forecast.Items);
+
         foreach (var item in forecast.Items)
         {
             var condition =
@@ -344,9 +343,142 @@ public class ConsoleMenu
 
             Console.WriteLine(
                 $"{item.DateTimeText,-20}" +
-                $"{item.Main.Temperature,6:F1} °C   " +
+                $"{FormatTemperature(item.Main.Temperature),10}   " +
                 $"{condition,-18}" +
                 $"{precipitation,4:F0}%");
+        }
+        DisplayForecastSummary(forecast.Items);
+    }
+
+    private void DisplayForecastSummary(
+    IEnumerable<ForecastItemDto> items)
+    {
+        var forecastItems = items.ToList();
+
+        if (forecastItems.Count == 0)
+        {
+            return;
+        }
+
+        var highestTemperature =
+            forecastItems.Max(item => item.Main.Temperature);
+
+        var lowestTemperature =
+            forecastItems.Min(item => item.Main.Temperature);
+
+        var averageTemperature =
+            forecastItems.Average(item => item.Main.Temperature);
+
+        var highestRainChance =
+            forecastItems.Max(
+                item => item.ProbabilityOfPrecipitation) * 100;
+
+        Console.WriteLine();
+        Console.WriteLine("FORECAST SUMMARY");
+        Console.WriteLine("----------------------------------------");
+        Console.WriteLine(
+            $"Highest Temperature : {FormatTemperature(highestTemperature)}");
+        Console.WriteLine(
+            $"Lowest Temperature  : {FormatTemperature(lowestTemperature)}");
+        Console.WriteLine(
+            $"Average Temperature : {FormatTemperature(averageTemperature)}");
+        Console.WriteLine(
+            $"Highest Rain Chance : {highestRainChance:F0} %");
+    }
+
+    private void SelectTemperatureUnit()
+    {
+        Console.WriteLine();
+        Console.WriteLine("1. Celsius");
+        Console.WriteLine("2. Fahrenheit");
+        Console.Write("Choose temperature unit: ");
+
+        var choice = Console.ReadLine();
+
+        switch (choice)
+        {
+            case "1":
+                _useFahrenheit = false;
+                Console.WriteLine("Temperature unit set to Celsius.");
+                break;
+
+            case "2":
+                _useFahrenheit = true;
+                Console.WriteLine("Temperature unit set to Fahrenheit.");
+                break;
+
+            default:
+                Console.WriteLine("Invalid temperature unit.");
+                break;
+        }
+    }
+
+    private string FormatTemperature(decimal celsius)
+    {
+        if (_useFahrenheit)
+        {
+            var fahrenheit = celsius * 9 / 5 + 32;
+            return $"{fahrenheit:F1} °F";
+        }
+
+        return $"{celsius:F1} °C";
+    }
+
+    private static List<ForecastItemDto> SelectForecastItems(
+        IEnumerable<ForecastItemDto> items)
+    {
+        Console.WriteLine("1. Show all forecast entries");
+        Console.WriteLine("2. Show today's forecast");
+        Console.WriteLine("3. Show tomorrow's forecast");
+        Console.Write("Choose forecast display: ");
+
+        var choice = Console.ReadLine();
+        var forecastItems = items.ToList();
+
+        return choice switch
+        {
+            "1" => forecastItems,
+            "2" => forecastItems
+                .Where(item => DateTime.TryParse(item.DateTimeText, out var date) &&
+                               date.Date == DateTime.Today)
+                .ToList(),
+            "3" => forecastItems
+                .Where(item => DateTime.TryParse(item.DateTimeText, out var date) &&
+                               date.Date == DateTime.Today.AddDays(1))
+                .ToList(),
+            _ => ShowAllAfterInvalidSelection(forecastItems)
+        };
+    }
+
+    private static List<ForecastItemDto> ShowAllAfterInvalidSelection(
+        List<ForecastItemDto> forecastItems)
+    {
+        Console.WriteLine("Invalid selection. Showing all forecast entries.");
+        return forecastItems;
+    }
+
+    private static void DisplayRainAlert(
+    IEnumerable<ForecastItemDto> items)
+    {
+        if (items.Any(item =>
+            item.ProbabilityOfPrecipitation >= 0.60m))
+        {
+            Console.WriteLine();
+            Console.WriteLine(
+                "RAIN ALERT: High probability of precipitation.");
+            Console.WriteLine();
+        }
+    }
+
+    private static void DisplayHotWeatherAlert(
+    CurrentWeatherDto weather)
+    {
+        if (weather.Main.Temperature > 35m)
+        {
+            Console.WriteLine();
+            Console.WriteLine("WEATHER ALERT:");
+            Console.WriteLine("High temperature detected.");
+            Console.WriteLine();
         }
     }
 }

@@ -10,6 +10,10 @@
 *.userosscache
 *.sln.docstates
 
+# Local OpenWeather API key; keep this file on the computer, not in Git.
+appsettings.json
+
+
 # User-specific files (MonoDevelop/Xamarin Studio)
 *.userprefs
 
